@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simplex Optimizer Pro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-blobs"></div>
+    
+    <main class="container">
+        <header>
+            <h1>Simplex Optimizer <span class="accent">Pro</span></h1>
+            <p>Resuelve problemas de programación lineal con elegancia.</p>
+        </header>
+
+        <section class="card glass-morphism">
+            <div class="config-section">
+                <div class="input-group">
+                    <label for="num-vars">Número de Variables:</label>
+                    <input type="number" id="num-vars" min="1" value="2">
+                </div>
+                <div class="input-group">
+                    <label for="opt-type">Objetivo:</label>
+                    <select id="opt-type">
+                        <option value="max">Maximizar</option>
+                        <option value="min">Minimizar</option>
+                    </select>
+                </div>
+                <button id="setup-btn" class="btn-primary">Configurar</button>
+            </div>
+
+            <div id="solver-inputs" class="hidden">
+                <div class="section-title">Función Objetivo (Z)</div>
+                <div id="objective-container" class="equation-row">
+                    <!-- Dynamic variable inputs -->
+                </div>
+
+                <div class="section-title">Restricciones</div>
+                <div id="constraints-container">
+                    <!-- Dynamic constraint inputs -->
+                </div>
+                
+                <div class="action-buttons">
+                    <button id="add-constraint-btn" class="btn-secondary">Añadir Restricción</button>
+                    <button id="solve-btn" class="btn-glow">Resolver Problema</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="results-section" class="card glass-morphism hidden">
+            <div class="section-title">Resultados</div>
+            <div id="results-content">
+                <!-- Results will be injected here -->
+            </div>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
