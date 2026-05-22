@@ -248,7 +248,46 @@ class SimplexSolver:
             "steps": self.steps,
             "num_vars": self.n,
             "num_constraints": self.m,
-            "graphic_data": graphic
+            "graphic_data": graphic,
+            "sensitivity_analysis": self.compute_sensitivity_analysis()
+        }
+
+    def compute_sensitivity_analysis(self):
+        if self.tableau is None:
+            return None
+
+        headers = self.var_names + ["RHS"]
+        rows = []
+        for i in range(self.m):
+            row_vals = [round(float(v), 6) for v in self.tableau[i, :-1].tolist()]
+            rows.append({
+                "basis": self.var_names[self.basis[i]],
+                "values": row_vals + [round(float(self.tableau[i, -1]), 6)]
+            })
+
+        z_row = [round(float(v), 6) for v in self.tableau[-1, :-1].tolist()]
+        rows.append({
+            "basis": "Z",
+            "values": z_row + [round(float(self.tableau[-1, -1]), 6)]
+        })
+
+        # Dual prices / shadow prices desde la base actual
+        try:
+            A_aug = np.hstack([self.A, np.eye(self.m)])
+            B = A_aug[:, self.basis]
+            c_B = np.array([0.0 if idx >= self.n else float(self.original_c[idx]) for idx in self.basis])
+            y = np.linalg.solve(B.T, c_B)
+            shadow_prices = [round(float(v), 6) for v in y.tolist()]
+        except Exception:
+            shadow_prices = []
+
+        reduced_costs = [round(float(v), 6) for v in self.tableau[-1, :-1].tolist()]
+
+        return {
+            "headers": headers,
+            "rows": rows,
+            "shadow_prices": shadow_prices,
+            "reduced_costs": reduced_costs
         }
 
 

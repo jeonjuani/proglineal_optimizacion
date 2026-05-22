@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const constraintsContainer = document.getElementById('constraints-container');
     const resultsSection = document.getElementById('results-section');
     const resultsContent = document.getElementById('results-content');
+    const graphPanel = document.getElementById('graph-panel');
+    const graphWrapper = document.getElementById('graph-wrapper');
 
     let numVars = 2;
 
@@ -55,17 +57,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ─── Generate Objective Inputs ────────────────────────────────────────────
     function generateObjectiveInputs() {
-        objectiveContainer.innerHTML = '';
+        let html = '';
         for (let i = 0; i < numVars; i++) {
-            const group = document.createElement('div');
-            group.className = 'equation-row';
-            group.innerHTML = `
-                <input type="number" step="any" class="var-input obj-coef" placeholder="0" data-index="${i}">
-                <span class="var-label">x<sub>${i + 1}</sub></span>
-                ${i < numVars - 1 ? '<span>+</span>' : ''}
+            html += `
+                <span class="coef-group">
+                    <input type="number" step="any" class="var-input obj-coef" placeholder="0" data-index="${i}">
+                    <span class="var-label">x<sub>${i + 1}</sub></span>
+                </span>
+                ${i < numVars - 1 ? '<span class="eq-op">+</span>' : ''}
             `;
-            objectiveContainer.appendChild(group);
         }
+        objectiveContainer.innerHTML = html;
     }
 
     // ─── Add Constraint Row ───────────────────────────────────────────────────
@@ -76,16 +78,18 @@ document.addEventListener('DOMContentLoaded', () => {
         let html = '';
         for (let i = 0; i < numVars; i++) {
             html += `
-                <input type="number" step="any" class="var-input const-coef" placeholder="0" data-index="${i}">
-                <span class="var-label">x<sub>${i + 1}</sub></span>
-                ${i < numVars - 1 ? '<span>+</span>' : ''}
+                <span class="coef-group">
+                    <input type="number" step="any" class="var-input const-coef" placeholder="0" data-index="${i}">
+                    <span class="var-label">x<sub>${i + 1}</sub></span>
+                </span>
+                ${i < numVars - 1 ? '<span class="eq-op">+</span>' : ''}
             `;
         }
 
         html += `
-            <span style="margin: 0 10px;">&le;</span>
+            <span class="eq-op eq-op--rel">&le;</span>
             <input type="number" step="any" class="var-input const-rhs" placeholder="0">
-            <button class="btn-secondary remove-btn" style="padding: 0.4rem 0.8rem; margin-left: 10px;">&times;</button>
+            <button type="button" class="btn-secondary remove-btn" aria-label="Eliminar restricción">&times;</button>
         `;
 
         row.innerHTML = html;
@@ -161,10 +165,13 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsContent.appendChild(sliderSection);
         }
 
-        // Graphical method (2 variables only)
         if (data.graphic_data) {
-            const graphSec = buildGraphSection(data.graphic_data);
-            resultsContent.appendChild(graphSec);
+            graphPanel.classList.remove('hidden');
+            graphWrapper.innerHTML = '';
+            graphWrapper.appendChild(buildGraphSection(data.graphic_data));
+        } else {
+            graphPanel.classList.add('hidden');
+            graphWrapper.innerHTML = '';
         }
 
         resultsSection.scrollIntoView({ behavior: 'smooth' });
