@@ -18,52 +18,52 @@
             <p>Resuelve problemas de programación lineal con elegancia.</p>
         </header>
 
-        <div class="main-grid">
-            <section class="card glass-morphism control-panel">
-                <div class="config-section">
-                    <div class="input-group">
-                        <label for="num-vars">Número de Variables:</label>
-                        <input type="number" id="num-vars" min="1" value="2">
-                    </div>
-                    <div class="input-group">
-                        <label for="opt-type">Objetivo:</label>
-                        <select id="opt-type">
-                            <option value="max">Maximizar</option>
-                            <option value="min">Minimizar</option>
-                        </select>
-                    </div>
-                    <button id="setup-btn" class="btn-primary">Configurar</button>
+        <section class="card glass-morphism control-panel">
+            <div class="config-section">
+                <div class="input-group">
+                    <label for="num-vars">Número de Variables:</label>
+                    <input type="number" id="num-vars" min="1" value="2">
+                </div>
+                <div class="input-group">
+                    <label for="opt-type">Objetivo:</label>
+                    <select id="opt-type">
+                        <option value="max">Maximizar</option>
+                        <option value="min">Minimizar</option>
+                    </select>
+                </div>
+                <button id="setup-btn" class="btn-primary">Configurar</button>
+            </div>
+
+            <div id="solver-inputs" class="hidden">
+                <div class="section-title">Función Objetivo (Z)</div>
+                <div id="objective-container" class="equation-row">
+                    <!-- Dynamic variable inputs -->
                 </div>
 
-                <div id="solver-inputs" class="hidden">
-                    <div class="section-title">Función Objetivo (Z)</div>
-                    <div id="objective-container" class="equation-row">
-                        <!-- Dynamic variable inputs -->
-                    </div>
-
-                    <div class="section-title">Restricciones</div>
-                    <div id="constraints-container">
-                        <!-- Dynamic constraint inputs -->
-                    </div>
-
-                    <div class="action-buttons">
-                        <button id="add-constraint-btn" class="btn-secondary">Añadir Restricción</button>
-                        <button id="solve-btn" class="btn-glow">Resolver Problema</button>
-                    </div>
+                <div class="section-title">Restricciones</div>
+                <div id="constraints-container">
+                    <!-- Dynamic constraint inputs -->
                 </div>
-            </section>
 
+                <div class="action-buttons">
+                    <button id="add-constraint-btn" class="btn-secondary">Añadir Restricción</button>
+                    <button id="solve-btn" class="btn-glow">Resolver Problema</button>
+                </div>
+            </div>
+        </section>
+
+        <div class="outputs-container">
             <section id="results-section" class="card glass-morphism hidden output-panel">
                 <div class="section-title">Resultados</div>
                 <div id="results-content">
                     <!-- Results will be injected here -->
                 </div>
             </section>
-        </div>
 
-        <section id="graph-panel" class="card glass-morphism hidden">
-            <div id="graph-wrapper"></div>
-        </section>
+            <section id="graph-panel" class="card glass-morphism hidden">
+                <div id="graph-wrapper"></div>
+            </section>
+        </div>
     </main>
 
     <script src="{{ url_for('static', filename='js/simplex_graph.js') }}"></script>

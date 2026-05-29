@@ -207,7 +207,7 @@ function buildGraphSection(gd) {
     });
 
     nextBtn.addEventListener('click', () => {
-        if (graphState.activeStep < gd.constraints.length - 1) {
+        if (graphState.activeStep < graphSteps - 1) {
             graphState.activeStep += 1;
             updateGraph();
         }
@@ -452,8 +452,13 @@ function drawCanvas(canvas, gd, opts = {}) {
         }
 
         if (showObjective && gd.optimal_point) {
-        ctx.font = `bold ${Math.max(10, Math.round(W / 55))}px Outfit,sans-serif`;
-        ctx.textAlign = 'left';
-        ctx.fillText(`★ Z*=${zLabel}`, px + 14, py - 10);
-    }
+            const [x1o, x2o] = gd.optimal_point;
+            const px = tx(x1o), py = ty(x2o);
+            const [c1, c2] = gd.obj_coefficients;
+            const zVal = c1 * x1o + c2 * x2o;
+            ctx.font = `bold ${Math.max(10, Math.round(W / 55))}px Outfit,sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#16a34a';
+            ctx.fillText(`★ Z*=${fmtG(zVal)}`, px + 14, py - 10);
+        }
 }

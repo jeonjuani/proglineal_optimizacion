@@ -256,6 +256,126 @@ class SimplexSolver:
         if self.tableau is None:
             return None
 
+        def clean_val(v):
+            if v == float('inf') or v == np.inf:
+                return None
+            if v == float('-inf') or v == -np.inf:
+                return None
+            if np.isnan(v):
+                return None
+            return round(float(v), 4)
+
+        # Nombres de variables y restricciones
+        var_names = [f"x{i+1}" for i in range(self.n)]
+        constraint_names = [f"Restricción {i+1}" for i in range(self.m)]
+
+        # 1. Variables de decisión
+        variables_sensitivity = []
+        for j in range(self.n):
+            c_orig = float(self.original_c[j])
+            final_val = float(self.solution[j]) if self.solution is not None else 0.0
+            
+            r_j = float(self.tableau[-1, j])
+            red_cost = r_j if not (j in self.basis) else 0.0
+
+            # Calcular rangos del coeficiente objetivo (c_j)
+            if j in self.basis:
+                row_idx = self.basis.index(j)
+                max_diffs = []
+                min_diffs = []
+                
+                for k in range(self.n + self.m):
+                    if k not in self.basis:
+                        y_row_k = float(self.tableau[row_idx, k])
+                        r_k = float(self.tableau[-1, k])
+                        if y_row_k > 1e-10:
+                            max_diffs.append(r_k / y_row_k)
+                        elif y_row_k < -1e-10:
+                            min_diffs.append(r_k / y_row_k)
+                            
+                delta_max = min(max_diffs) if max_diffs else float('inf')
+                delta_min = max(min_diffs) if min_diffs else float('-inf')
+                
+                if self.opt_type == 'max':
+                    c_min = c_orig + delta_min
+                    c_max = c_orig + delta_max
+                else:  # min
+                    c_min = c_orig - delta_max
+                    c_max = c_orig - delta_min
+            else:
+                # No básica
+                if self.opt_type == 'max':
+                    c_min = float('-inf')
+                    c_max = c_orig + red_cost
+                else:  # min
+                    c_min = c_orig - red_cost
+                    c_max = float('inf')
+            
+            variables_sensitivity.append({
+                "name": var_names[j],
+                "final_value": clean_val(final_val),
+                "reduced_cost": clean_val(red_cost),
+                "objective_coefficient": clean_val(c_orig),
+                "min": clean_val(c_min),
+                "max": clean_val(c_max)
+            })
+
+        # 2. Restricciones
+        constraints_sensitivity = []
+        
+        # Dual prices / shadow prices desde la base actual
+        shadow_prices = [0.0] * self.m
+        try:
+            A_aug = np.hstack([self.A, np.eye(self.m)])
+            B = A_aug[:, self.basis]
+            c_B = np.array([0.0 if idx >= self.n else float(self.original_c[idx]) for idx in self.basis])
+            y_dual = np.linalg.solve(B.T, c_B)
+            shadow_prices = [float(v) for v in y_dual.tolist()]
+        except Exception:
+            for k in range(self.m):
+                shadow_prices[k] = float(self.tableau[-1, self.n + k])
+                if self.opt_type == 'min':
+                    shadow_prices[k] = -shadow_prices[k]
+
+        for k in range(self.m):
+            b_orig = float(self.b[k])
+            
+            slack_val = 0.0
+            slack_var_idx = self.n + k
+            if slack_var_idx in self.basis:
+                row_idx = self.basis.index(slack_var_idx)
+                slack_val = float(self.tableau[row_idx, -1])
+                
+            final_val = b_orig - slack_val
+            
+            # Rangos de RHS
+            max_diffs = []
+            min_diffs = []
+            
+            for j in range(self.m):
+                s_jk = float(self.tableau[j, self.n + k])
+                r_j = float(self.tableau[j, -1])
+                if s_jk > 1e-10:
+                    min_diffs.append(-r_j / s_jk)
+                elif s_jk < -1e-10:
+                    max_diffs.append(-r_j / s_jk)
+                    
+            delta_min = max(min_diffs) if min_diffs else float('-inf')
+            delta_max = min(max_diffs) if max_diffs else float('inf')
+            
+            b_min = b_orig + delta_min
+            b_max = b_orig + delta_max
+            
+            constraints_sensitivity.append({
+                "name": constraint_names[k],
+                "final_value": clean_val(final_val),
+                "shadow_price": clean_val(shadow_prices[k]),
+                "rhs": clean_val(b_orig),
+                "min": clean_val(b_min),
+                "max": clean_val(b_max)
+            })
+
+        # Mantener compatibilidad de headers/rows por si acaso
         headers = self.var_names + ["RHS"]
         rows = []
         for i in range(self.m):
@@ -271,23 +391,11 @@ class SimplexSolver:
             "values": z_row + [round(float(self.tableau[-1, -1]), 6)]
         })
 
-        # Dual prices / shadow prices desde la base actual
-        try:
-            A_aug = np.hstack([self.A, np.eye(self.m)])
-            B = A_aug[:, self.basis]
-            c_B = np.array([0.0 if idx >= self.n else float(self.original_c[idx]) for idx in self.basis])
-            y = np.linalg.solve(B.T, c_B)
-            shadow_prices = [round(float(v), 6) for v in y.tolist()]
-        except Exception:
-            shadow_prices = []
-
-        reduced_costs = [round(float(v), 6) for v in self.tableau[-1, :-1].tolist()]
-
         return {
             "headers": headers,
             "rows": rows,
-            "shadow_prices": shadow_prices,
-            "reduced_costs": reduced_costs
+            "variables": variables_sensitivity,
+            "constraints": constraints_sensitivity
         }
 
 

@@ -165,6 +165,14 @@ document.addEventListener('DOMContentLoaded', () => {
             resultsContent.appendChild(sliderSection);
         }
 
+        // Add Sensitivity Analysis tables
+        if (data.sensitivity_analysis) {
+            const sensitivitySection = buildSensitivitySection(data.sensitivity_analysis);
+            if (sensitivitySection) {
+                resultsContent.appendChild(sensitivitySection);
+            }
+        }
+
         if (data.graphic_data) {
             graphPanel.classList.remove('hidden');
             graphWrapper.innerHTML = '';
@@ -175,6 +183,101 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         resultsSection.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ─── Build Sensitivity Section ────────────────────────────────────────────
+    function buildSensitivitySection(sa) {
+        if (!sa || !sa.variables || !sa.constraints) return null;
+
+        const wrap = document.createElement('div');
+        wrap.className = 'sensitivity-section';
+
+        const title = document.createElement('div');
+        title.className = 'section-title';
+        title.style.marginTop = '2rem';
+        title.textContent = '🔍 Análisis de Sensibilidad';
+        wrap.appendChild(title);
+
+        const fmtBound = (val) => (val === null || val === undefined) ? '∞' : formatNum(val);
+
+        // 1. Variables Table
+        const varTitle = document.createElement('div');
+        varTitle.style.cssText = 'font-weight: 600; margin-bottom: 0.75rem; font-size: 0.95rem; color: var(--text-primary);';
+        varTitle.textContent = 'Variables de Decisión';
+        wrap.appendChild(varTitle);
+
+        const varTableWrapper = document.createElement('div');
+        varTableWrapper.className = 'tableau-table-wrapper compact-table-wrapper';
+        varTableWrapper.style.marginBottom = '1.5rem';
+
+        const varTable = document.createElement('table');
+        varTable.className = 'simplex-table compact-table';
+        varTable.innerHTML = `
+            <thead>
+                <tr>
+                    <th style="text-align:left">Variable</th>
+                    <th>Valor Final</th>
+                    <th>Costo Reducido</th>
+                    <th>Coef. Objetivo</th>
+                    <th>Mínimo</th>
+                    <th>Máximo</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${sa.variables.map(v => `
+                    <tr>
+                        <td style="text-align:left" class="basis-cell">${v.name}</td>
+                        <td>${formatNum(v.final_value)}</td>
+                        <td>${formatNum(v.reduced_cost)}</td>
+                        <td>${formatNum(v.objective_coefficient)}</td>
+                        <td>${fmtBound(v.min)}</td>
+                        <td>${fmtBound(v.max)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        varTableWrapper.appendChild(varTable);
+        wrap.appendChild(varTableWrapper);
+
+        // 2. Constraints Table
+        const constTitle = document.createElement('div');
+        constTitle.style.cssText = 'font-weight: 600; margin-bottom: 0.75rem; font-size: 0.95rem; color: var(--text-primary);';
+        constTitle.textContent = 'Restricciones';
+        wrap.appendChild(constTitle);
+
+        const constTableWrapper = document.createElement('div');
+        constTableWrapper.className = 'tableau-table-wrapper compact-table-wrapper';
+
+        const constTable = document.createElement('table');
+        constTable.className = 'simplex-table compact-table';
+        constTable.innerHTML = `
+            <thead>
+                <tr>
+                    <th style="text-align:left">Restricción</th>
+                    <th>Valor Final (LHS)</th>
+                    <th>Precio Sombra</th>
+                    <th>Lado Derecho (RHS)</th>
+                    <th>Mínimo</th>
+                    <th>Máximo</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${sa.constraints.map(c => `
+                    <tr>
+                        <td style="text-align:left" class="basis-cell">${c.name}</td>
+                        <td>${formatNum(c.final_value)}</td>
+                        <td>${formatNum(c.shadow_price)}</td>
+                        <td>${formatNum(c.rhs)}</td>
+                        <td>${fmtBound(c.min)}</td>
+                        <td>${fmtBound(c.max)}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        `;
+        constTableWrapper.appendChild(constTable);
+        wrap.appendChild(constTableWrapper);
+
+        return wrap;
     }
 
     // ─── Tableau Slider ───────────────────────────────────────────────────────
