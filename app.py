@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-from simplex_solver_incompleto import SimplexSolver
+from simplex_solver import SimplexSolver
 import numpy as np
 
 app = Flask(__name__)
