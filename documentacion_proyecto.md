@@ -35,25 +35,35 @@ La aplicación adopta una arquitectura cliente-servidor desacoplada, moderna y l
 
 El aplicativo realiza el procesamiento de un problema de programación lineal a través de cuatro etapas lógicas bien diferenciadas.
 
-### 3.1. Estandarización y Construcción del Tableau Inicial
-Cualquier problema ingresado en su forma básica:
+### 3.1. Estandarización: de la Forma Básica a la Forma Aumentada
+
+El usuario ingresa el problema en su **forma básica**, definiendo la función objetivo y las restricciones, que ahora pueden ser de tipo $\le$, $\ge$, o $=$:
+
 $$\text{Maximizar (o Minimizar) } Z = \sum_{j=1}^n c_j x_j$$
-$$\text{Sujeto a: } \sum_{j=1}^n a_{ij} x_j \le b_i, \quad \forall i=1,\dots,m$$
+$$\text{Sujeto a restricciones del tipo: } \sum_{j=1}^n a_{ij} x_j \le b_i \quad \text{o} \quad \ge b_i \quad \text{o} \quad = b_i$$
 $$x_j \ge 0, \quad \forall j=1,\dots,n$$
 
-Es estandarizado introduciendo variables de holgura no negativas $s_i \ge 0$ para cada una de las $m$ restricciones, transformando las desigualdades en igualdades estrictas:
-$$\sum_{j=1}^n a_{ij} x_j + s_i = b_i, \quad \forall i=1,\dots,m$$
+A partir de esa entrada, el programa construye automáticamente la **forma aumentada** del problema introduciendo variables auxiliares según el tipo de restricción:
 
-El aplicativo organiza estos coeficientes en una matriz rectangular denominada **Tableau Simplex**, estructurada de la siguiente manera:
+1.  **Para restricciones $\le$**: Introduce una **variable de holgura** $s_i \ge 0$, convirtiendo la desigualdad en igualdad:
+    $$\sum_{j=1}^n a_{ij} x_j + s_i = b_i$$
+2.  **Para restricciones $\ge$**: Introduce una **variable de exceso** $e_i \ge 0$ (con coeficiente $-1$) y una **variable artificial** $a_i \ge 0$ (con coeficiente $+1$):
+    $$\sum_{j=1}^n a_{ij} x_j - e_i + a_i = b_i$$
+3.  **Para restricciones $=$**: Introduce únicamente una **variable artificial** $a_i \ge 0$:
+    $$\sum_{j=1}^n a_{ij} x_j + a_i = b_i$$
 
-| Base | $x_1$ | $\cdots$ | $x_n$ | $s_1$ | $\cdots$ | $s_m$ | RHS |
-|:----:|:------:|:--------:|:------:|:------:|:--------:|:------:|:---:|
-| $s_1$ | $a_{11}$ | $\cdots$ | $a_{1n}$ | $1$ | $\cdots$ | $0$ | $b_1$ |
-| $\vdots$ | $\vdots$ | $\ddots$ | $\vdots$ | $\vdots$ | $\ddots$ | $\vdots$ | $\vdots$ |
-| $s_m$ | $a_{m1}$ | $\cdots$ | $a_{mn}$ | $0$ | $\cdots$ | $1$ | $b_m$ |
-| $Z$ | $-c_1$ | $\cdots$ | $-c_n$ | $0$ | $\cdots$ | $0$ | $0$ |
+Para manejar las variables artificiales, el motor matemático implementa el **Método de la Gran M (Big-M)**. Se asigna una penalización muy grande ($-M$ en maximización) a cada variable artificial en la función objetivo, forzando a que estas variables salgan de la base para alcanzar la optimalidad. Si al finalizar el algoritmo alguna variable artificial permanece en la base con un valor positivo, el aplicativo declara el problema como **infactible**.
 
-*Nota:* Si el tipo de optimización es de minimización ($\text{Min } Z$), el motor la convierte a maximización definiendo $\text{Max } Z' = -Z$, lo que equivale a invertir el signo de los coeficientes de la función objetivo: $c'_j = -c_j$.
+Con la forma aumentada establecida, el programa organiza todos los coeficientes en el **Tableau Simplex inicial**. La base inicial estará conformada por las variables de holgura (para restricciones $\le$) y las variables artificiales (para restricciones $\ge$ y $=$):
+
+| Base | $x_1 \dots x_n$ | $s_1 \dots s_k$ | $e_1 \dots e_p$ | $a_1 \dots a_q$ | RHS |
+|:----:|:---------------:|:---------------:|:---------------:|:---------------:|:---:|
+| $s/a$| $a_{i1} \dots a_{in}$ | $1 \dots 0$ | $0 \dots -1$ | $0 \dots 1$ | $b_i$ |
+| $Z$  | $-c_1 \dots -c_n$ | $0 \dots 0$ | $0 \dots 0$ | $M \dots M$ | $0$ |
+
+*(Previo a la primera iteración, la fila Z se ajusta mediante operaciones elementales para que los costos reducidos de las variables artificiales básicas sean cero).*
+
+*Nota:* Si el tipo de optimización es **minimización** ($\text{Min } Z$), el motor la convierte a maximización multiplicando los coeficientes de la función objetivo por $-1$ (es decir, $\text{Max } Z' = -Z$), lo que equivale a trabajar con $c'_j = -c_j$. El valor óptimo reportado se devuelve al signo original al final.
 
 ### 3.2. Ciclo del Algoritmo Simplex Primal y Operaciones de Pivoteo
 El motor matemático ejecuta recursivamente las iteraciones simplex aplicando los siguientes criterios algebraicos:
@@ -151,7 +161,7 @@ El flujo operativo dentro de **Simplex Optimizer Pro** consta de los siguientes 
 2.  **Ingreso de Coeficientes de la Ecuación Objetivo:**
     Se despliega dinámicamente un formulario horizontal donde el usuario ingresa los coeficientes numéricos $c_j$ correspondientes a la función de rendimiento.
 3.  **Definición de Restricciones Dinámicas:**
-    Se muestra la primera restricción en formato lineal. El aplicativo permite ingresar coeficientes reales $a_{ij}$, la relación de desigualdad (fijada en $\le$ para la estructura estándar) y el recurso límite RHS ($b_i$). El botón "Añadir Restricción" crea dinámicamente nuevas filas en el formulario.
+    Se muestra la primera restricción en formato lineal. El aplicativo permite ingresar coeficientes reales $a_{ij}$, seleccionar el tipo de relación mediante un menú desplegable ($\le$, $\ge$, $=$) y el recurso límite RHS ($b_i$). El botón "Añadir Restricción" crea dinámicamente nuevas filas en el formulario.
 4.  **Visualización del Desglose Simplex Paso a Paso:**
     Tras oprimir "Resolver Problema", la interfaz procesa los datos y renderiza un carrusel dinámico interactivo:
     *   **Carrusel de Iteraciones:** El usuario puede navegar mediante botones "Anterior/Siguiente", gestos táctiles o flechas del teclado a través de los tableros.

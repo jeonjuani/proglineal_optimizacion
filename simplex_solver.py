@@ -1,12 +1,17 @@
 import numpy as np
 
 class SimplexSolver:
-    def __init__(self, c, A, b, optimization_type='max'):
+    # Penalización Big-M para variables artificiales
+    BIG_M = 1e6
+
+    def __init__(self, c, A, b, optimization_type='max', constraint_types=None):
         """
         c: coeficientes de la función objetivo (lista o array)
         A: matriz de coeficientes de las restricciones (lista de listas o array)
         b: términos independientes de las restricciones (lista o array)
         optimization_type: 'max' o 'min'
+        constraint_types: lista de strings '<=' | '>=' | '=' por restricción.
+                          Si es None, se asume '<=' para todas.
         """
         self.original_c = np.array(c, dtype=float)
         self.c = np.array(c, dtype=float)
@@ -14,10 +19,28 @@ class SimplexSolver:
         self.b = np.array(b, dtype=float)
         self.opt_type = optimization_type
 
+        self.m, self.n = self.A.shape  # m restricciones, n variables de decisión
+
+        # Tipos de restricción
+        if constraint_types is None:
+            self.constraint_types = ['<='] * self.m
+        else:
+            self.constraint_types = list(constraint_types)
+
+        # Normalizar: si b_i < 0, multiplicar restricción por -1 e invertir desigualdad
+        for i in range(self.m):
+            if self.b[i] < 0:
+                self.A[i] = -self.A[i]
+                self.b[i] = -self.b[i]
+                if self.constraint_types[i] == '<=':
+                    self.constraint_types[i] = '>='
+                elif self.constraint_types[i] == '>=':
+                    self.constraint_types[i] = '<='
+                # '=' se mantiene igual
+
         if self.opt_type == 'min':
             self.c = -self.c
 
-        self.m, self.n = self.A.shape
         self.tableau = None
         self.status = "In progress"
         self.solution = None
@@ -26,19 +49,109 @@ class SimplexSolver:
         # Para la visualización UI
         self.steps = []
         self.graphic_data = None
-        # Nombres de variables: x1, x2... s1, s2...
-        self.var_names = [f"x{i+1}" for i in range(self.n)] + [f"s{i+1}" for i in range(self.m)]
-        # La base inicial contiene las variables de holgura (índices de n a n+m-1)
-        self.basis = list(range(self.n, self.n + self.m))
+
+        # --- Construir nombres de variables y estructura de columnas ---
+        # Variables de decisión: x1, x2, ...
+        self.var_names = [f"x{i+1}" for i in range(self.n)]
+
+        # Contadores para las variables auxiliares
+        self.num_slack = 0      # holgura (<=)
+        self.num_surplus = 0    # exceso (>=)
+        self.num_artificial = 0 # artificiales (>= y =)
+
+        # Mapeos: para cada restricción, qué columna le corresponde
+        self.slack_cols = {}       # i -> col de s_i
+        self.surplus_cols = {}     # i -> col de e_i
+        self.artificial_cols = {}  # i -> col de a_i
+        self.artificial_col_set = set()  # conjunto de columnas artificiales
+
+        # Primero agregar holguras y excesos
+        col_idx = self.n
+        for i in range(self.m):
+            ct = self.constraint_types[i]
+            if ct == '<=':
+                self.slack_cols[i] = col_idx
+                self.num_slack += 1
+                self.var_names.append(f"s{self.num_slack}")
+                col_idx += 1
+            elif ct == '>=':
+                self.surplus_cols[i] = col_idx
+                self.num_surplus += 1
+                self.var_names.append(f"e{self.num_surplus}")
+                col_idx += 1
+
+        # Luego agregar artificiales
+        for i in range(self.m):
+            ct = self.constraint_types[i]
+            if ct == '>=' or ct == '=':
+                self.artificial_cols[i] = col_idx
+                self.artificial_col_set.add(col_idx)
+                self.num_artificial += 1
+                self.var_names.append(f"a{self.num_artificial}")
+                col_idx += 1
+
+        self.total_vars = col_idx  # total de columnas (sin contar RHS)
+
+        # La base inicial:
+        # - Para <=: la variable de holgura
+        # - Para >= y =: la variable artificial
+        self.basis = []
+        for i in range(self.m):
+            ct = self.constraint_types[i]
+            if ct == '<=':
+                self.basis.append(self.slack_cols[i])
+            else:  # >= o =
+                self.basis.append(self.artificial_cols[i])
 
     def build_tableau(self):
-        identity = np.eye(self.m)
-        top = np.hstack([self.A, identity, self.b.reshape(-1, 1)])
+        """
+        Construye el tableau Simplex inicial con holgura, exceso y artificiales.
 
-        bottom = np.zeros(self.n + self.m + 1)
-        bottom[:self.n] = -self.c
+        Estructura de columnas:
+        [x1..xn | s1..sk | e1..ej | a1..ap | RHS]
+        """
+        num_cols = self.total_vars + 1  # +1 para RHS
+        num_rows = self.m + 1           # +1 para fila Z
 
-        self.tableau = np.vstack([top, bottom])
+        self.tableau = np.zeros((num_rows, num_cols))
+
+        # Rellenar coeficientes de restricciones y variables auxiliares
+        for i in range(self.m):
+            # Coeficientes de variables de decisión
+            self.tableau[i, :self.n] = self.A[i]
+            # RHS
+            self.tableau[i, -1] = self.b[i]
+
+            ct = self.constraint_types[i]
+            if ct == '<=':
+                # Variable de holgura: +1
+                self.tableau[i, self.slack_cols[i]] = 1.0
+            elif ct == '>=':
+                # Variable de exceso: -1
+                self.tableau[i, self.surplus_cols[i]] = -1.0
+                # Variable artificial: +1
+                self.tableau[i, self.artificial_cols[i]] = 1.0
+            elif ct == '=':
+                # Variable artificial: +1
+                self.tableau[i, self.artificial_cols[i]] = 1.0
+
+        # Fila Z: -c para variables de decisión
+        self.tableau[-1, :self.n] = -self.c
+
+        # Penalización Big-M para variables artificiales
+        # En maximización: penalizar con -M (queremos que salgan de la base)
+        M = self.BIG_M
+        for col in self.artificial_col_set:
+            self.tableau[-1, col] = M  # Coeficiente +M antes de ajuste
+
+        # Ajustar la fila Z para las variables artificiales en la base
+        # Como las artificiales empiezan en la base, debemos hacer que sus
+        # columnas tengan 0 en la fila Z (eliminación Gauss-Jordan)
+        for i in range(self.m):
+            if self.constraint_types[i] in ('>=', '='):
+                art_col = self.artificial_cols[i]
+                # Restar M * fila_i de la fila Z
+                self.tableau[-1] -= M * self.tableau[i]
 
     def record_step(self, iteration, note, entering_idx=None, leaving_idx=None,
                     pivot_row=None, pivot_col=None, ratios=None, pivot_element=None):
@@ -100,10 +213,17 @@ class SimplexSolver:
         self.build_tableau()
         iteration = 0
 
+        # Determinar nota inicial según el tipo de problema
+        has_artificial = len(self.artificial_col_set) > 0
+        if has_artificial:
+            initial_note = "Tableau inicial (Método Big-M). Variables artificiales en la base."
+        else:
+            initial_note = "Tableau inicial. Variables de holgura en la base."
+
         # Registrar el tableau inicial (iteración 0)
         self.record_step(
             iteration=iteration,
-            note="Tableau inicial. Variables de holgura en la base.",
+            note=initial_note,
         )
 
         while True:
@@ -112,6 +232,16 @@ class SimplexSolver:
 
             # Condición de parada: todos los coeficientes en la fila Z son >= 0
             if np.all(last_row >= -1e-10):
+                # Verificar infactibilidad: si alguna variable artificial
+                # queda en la base con valor > 0
+                if self._check_infeasible():
+                    self.status = "Infeasible"
+                    self.record_step(
+                        iteration=iteration,
+                        note="❌ El problema es INFACTIBLE. Una variable artificial permanece en la base con valor > 0."
+                    )
+                    return self.get_results()
+
                 self.status = "Optimal"
                 self.extract_solution()
                 self.record_step(
@@ -168,6 +298,18 @@ class SimplexSolver:
 
         return self.get_results()
 
+    def _check_infeasible(self):
+        """
+        Verifica si el problema es infactible.
+        Retorna True si alguna variable artificial permanece en la base con valor > 0.
+        """
+        for i in range(self.m):
+            if self.basis[i] in self.artificial_col_set:
+                rhs_val = self.tableau[i, -1]
+                if abs(rhs_val) > 1e-8:
+                    return True
+        return False
+
     def _constraint_label(self, i):
         """Genera etiqueta legible de la restricción i"""
         terms = []
@@ -178,7 +320,16 @@ class SimplexSolver:
                 terms.append(f"{coef}x{j+1}")
         rhs = self.b[i]
         rhs_str = int(rhs) if rhs == int(rhs) else round(float(rhs), 4)
-        return " + ".join(terms) + f" ≤ {rhs_str}"
+
+        ct = self.constraint_types[i]
+        if ct == '<=':
+            symbol = '≤'
+        elif ct == '>=':
+            symbol = '≥'
+        else:
+            symbol = '='
+
+        return " + ".join(terms) + f" {symbol} {rhs_str}"
 
     def compute_graphic_data(self):
         """Calcula datos para el método gráfico (solo problemas de 2 variables)"""
@@ -189,7 +340,8 @@ class SimplexSolver:
 
         constraints_data = [
             {"a": float(A[i,0]), "b": float(A[i,1]),
-             "rhs": float(b_vec[i]), "label": self._constraint_label(i)}
+             "rhs": float(b_vec[i]), "type": self.constraint_types[i],
+             "label": self._constraint_label(i)}
             for i in range(self.m)
         ]
 
@@ -209,11 +361,24 @@ class SimplexSolver:
                 x2 = (a1*c2 - a2*c1) / det
                 if x1 < -1e-8 or x2 < -1e-8:
                     continue
-                # Verificar todas las restricciones originales
-                feasible = all(
-                    A[k,0]*x1 + A[k,1]*x2 <= b_vec[k] + 1e-8
-                    for k in range(self.m)
-                )
+                # Verificar todas las restricciones originales según su tipo
+                feasible = True
+                for k in range(self.m):
+                    lhs = A[k,0]*x1 + A[k,1]*x2
+                    ct = self.constraint_types[k]
+                    if ct == '<=':
+                        if lhs > b_vec[k] + 1e-8:
+                            feasible = False
+                            break
+                    elif ct == '>=':
+                        if lhs < b_vec[k] - 1e-8:
+                            feasible = False
+                            break
+                    elif ct == '=':
+                        if abs(lhs - b_vec[k]) > 1e-8:
+                            feasible = False
+                            break
+
                 if feasible:
                     x1r, x2r = round(x1, 4), round(x2, 4)
                     if not any(abs(v[0]-x1r)<1e-4 and abs(v[1]-x2r)<1e-4 for v in vertices):
@@ -249,11 +414,12 @@ class SimplexSolver:
             "num_vars": self.n,
             "num_constraints": self.m,
             "graphic_data": graphic,
-            "sensitivity_analysis": self.compute_sensitivity_analysis()
+            "sensitivity_analysis": self.compute_sensitivity_analysis(),
+            "constraint_types": self.constraint_types
         }
 
     def compute_sensitivity_analysis(self):
-        if self.tableau is None:
+        if self.tableau is None or self.status == "Infeasible":
             return None
 
         def clean_val(v):
@@ -274,7 +440,7 @@ class SimplexSolver:
         for j in range(self.n):
             c_orig = float(self.original_c[j])
             final_val = float(self.solution[j]) if self.solution is not None else 0.0
-            
+
             r_j = float(self.tableau[-1, j])
             red_cost = r_j if not (j in self.basis) else 0.0
 
@@ -283,19 +449,19 @@ class SimplexSolver:
                 row_idx = self.basis.index(j)
                 lower_bounds = []
                 upper_bounds = []
-                
-                for k in range(self.n + self.m):
-                    if k not in self.basis:
+
+                for k in range(self.total_vars):
+                    if k not in self.basis and k not in self.artificial_col_set:
                         y_row_k = float(self.tableau[row_idx, k])
                         r_k = float(self.tableau[-1, k])
                         if y_row_k > 1e-10:
                             lower_bounds.append(-r_k / y_row_k)
                         elif y_row_k < -1e-10:
                             upper_bounds.append(-r_k / y_row_k)
-                            
+
                 delta_min = max(lower_bounds) if lower_bounds else float('-inf')
                 delta_max = min(upper_bounds) if upper_bounds else float('inf')
-                
+
                 if self.opt_type == 'max':
                     c_min = c_orig + delta_min
                     c_max = c_orig + delta_max
@@ -310,7 +476,7 @@ class SimplexSolver:
                 else:  # min
                     c_min = c_orig - red_cost
                     c_max = float('inf')
-            
+
             variables_sensitivity.append({
                 "name": var_names[j],
                 "final_value": clean_val(final_val),
@@ -322,50 +488,91 @@ class SimplexSolver:
 
         # 2. Restricciones
         constraints_sensitivity = []
-        
-        # Dual prices / shadow prices desde la base actual
+
+        # Encontrar las columnas de holgura/exceso para cada restricción
+        # para calcular shadow prices
         shadow_prices = [0.0] * self.m
+
+        # Intentar calcular dual prices
         try:
-            A_aug = np.hstack([self.A, np.eye(self.m)])
+            # Construir la matriz aumentada completa (sin artificiales)
+            # Solo usar columnas de decisión + holgura + exceso
+            non_art_cols = [j for j in range(self.total_vars) if j not in self.artificial_col_set]
+            A_aug = np.zeros((self.m, self.total_vars))
+            for i in range(self.m):
+                A_aug[i, :self.n] = self.A[i]
+                ct = self.constraint_types[i]
+                if ct == '<=':
+                    A_aug[i, self.slack_cols[i]] = 1.0
+                elif ct == '>=':
+                    A_aug[i, self.surplus_cols[i]] = -1.0
+
             B = A_aug[:, self.basis]
-            c_B = np.array([0.0 if idx >= self.n else float(self.original_c[idx]) for idx in self.basis])
+            c_B_vals = []
+            for idx in self.basis:
+                if idx < self.n:
+                    c_B_vals.append(float(self.original_c[idx]))
+                else:
+                    c_B_vals.append(0.0)
+            c_B = np.array(c_B_vals)
             y_dual = np.linalg.solve(B.T, c_B)
             shadow_prices = [float(v) for v in y_dual.tolist()]
         except Exception:
+            # Fallback: usar coeficientes de fila Z en columnas de holgura
             for k in range(self.m):
-                shadow_prices[k] = float(self.tableau[-1, self.n + k])
+                ct = self.constraint_types[k]
+                if ct == '<=' and k in self.slack_cols:
+                    shadow_prices[k] = float(self.tableau[-1, self.slack_cols[k]])
+                elif ct == '>=' and k in self.surplus_cols:
+                    shadow_prices[k] = -float(self.tableau[-1, self.surplus_cols[k]])
                 if self.opt_type == 'min':
                     shadow_prices[k] = -shadow_prices[k]
 
         for k in range(self.m):
             b_orig = float(self.b[k])
-            
+
+            # Calcular la holgura/exceso
             slack_val = 0.0
-            slack_var_idx = self.n + k
-            if slack_var_idx in self.basis:
-                row_idx = self.basis.index(slack_var_idx)
-                slack_val = float(self.tableau[row_idx, -1])
-                
+            ct = self.constraint_types[k]
+            if ct == '<=' and k in self.slack_cols:
+                slack_var_idx = self.slack_cols[k]
+                if slack_var_idx in self.basis:
+                    row_idx = self.basis.index(slack_var_idx)
+                    slack_val = float(self.tableau[row_idx, -1])
+            elif ct == '>=' and k in self.surplus_cols:
+                surplus_var_idx = self.surplus_cols[k]
+                if surplus_var_idx in self.basis:
+                    row_idx = self.basis.index(surplus_var_idx)
+                    slack_val = float(self.tableau[row_idx, -1])
+
             final_val = b_orig - slack_val
-            
+
             # Rangos de RHS
+            # Buscar la columna de referencia para esta restricción
+            ref_col = None
+            if ct == '<=' and k in self.slack_cols:
+                ref_col = self.slack_cols[k]
+            elif ct == '>=' and k in self.surplus_cols:
+                ref_col = self.surplus_cols[k]
+
             max_diffs = []
             min_diffs = []
-            
-            for j in range(self.m):
-                s_jk = float(self.tableau[j, self.n + k])
-                r_j = float(self.tableau[j, -1])
-                if s_jk > 1e-10:
-                    min_diffs.append(-r_j / s_jk)
-                elif s_jk < -1e-10:
-                    max_diffs.append(-r_j / s_jk)
-                    
+
+            if ref_col is not None:
+                for j in range(self.m):
+                    s_jk = float(self.tableau[j, ref_col])
+                    r_j = float(self.tableau[j, -1])
+                    if s_jk > 1e-10:
+                        min_diffs.append(-r_j / s_jk)
+                    elif s_jk < -1e-10:
+                        max_diffs.append(-r_j / s_jk)
+
             delta_min = max(min_diffs) if min_diffs else float('-inf')
             delta_max = min(max_diffs) if max_diffs else float('inf')
-            
+
             b_min = b_orig + delta_min
             b_max = b_orig + delta_max
-            
+
             constraints_sensitivity.append({
                 "name": constraint_names[k],
                 "final_value": clean_val(final_val),
@@ -399,7 +606,7 @@ class SimplexSolver:
         }
 
 if __name__ == "__main__":
-    # Prueba rápida
+    print("=== Prueba 1: Solo ≤ (original) ===")
     # Max Z = 3x1 + 2x2
     # s.t.
     # 2x1 + x2 <= 18
@@ -415,6 +622,40 @@ if __name__ == "__main__":
     print("Status:", result["status"])
     print("Optimal Value:", result["optimal_value"])
     print("Solution:", result["solution"])
-    print("Steps recorded:", len(result["steps"]))
-    import pprint
-    pprint.pprint(result["sensitivity_analysis"])
+    print()
+
+    print("=== Prueba 2: Mezcla ≤, ≥, = ===")
+    # Max Z = 5x1 + 4x2
+    # s.t.
+    # 6x1 + 4x2 <= 24
+    # x1 + 2x2 >= 6
+    # x1 + x2 = 6
+
+    c2 = [5, 4]
+    A2 = [[6, 4], [1, 2], [1, 1]]
+    b2 = [24, 6, 6]
+    ct2 = ['<=', '>=', '=']
+
+    solver2 = SimplexSolver(c2, A2, b2, constraint_types=ct2)
+    result2 = solver2.solve()
+    print("Status:", result2["status"])
+    print("Optimal Value:", result2["optimal_value"])
+    print("Solution:", result2["solution"])
+    print()
+
+    print("=== Prueba 3: Infactible ===")
+    # Max Z = x1 + x2
+    # s.t.
+    # x1 + x2 <= 4
+    # x1 + x2 >= 8
+
+    c3 = [1, 1]
+    A3 = [[1, 1], [1, 1]]
+    b3 = [4, 8]
+    ct3 = ['<=', '>=']
+
+    solver3 = SimplexSolver(c3, A3, b3, constraint_types=ct3)
+    result3 = solver3.solve()
+    print("Status:", result3["status"])
+    print("Optimal Value:", result3["optimal_value"])
+    print("Solution:", result3["solution"])

@@ -369,9 +369,10 @@ function drawCanvas(canvas, gd, opts = {}) {
             if (selectedLine === null && i >= showConstraintCount) return;
 
             const isSelected = selectedLine === i;
+            const isEquality = c.type === '=';
             ctx.strokeStyle = GRAPH_COLORS[i % 6];
-            ctx.lineWidth = isSelected ? 3.5 : 2;
-            ctx.setLineDash(isSelected ? [6, 4] : []);
+            ctx.lineWidth = isSelected ? 3.5 : (isEquality ? 2.5 : 2);
+            ctx.setLineDash(isSelected ? [6, 4] : (isEquality ? [] : []));
             let p1, p2;
             if (Math.abs(c.b) > 1e-10) {
                 p1 = [0, c.rhs / c.b];
@@ -387,12 +388,14 @@ function drawCanvas(canvas, gd, opts = {}) {
             ctx.lineTo(tx(p2[0]), ty(p2[1]));
             ctx.stroke();
 
+            // Show constraint type label (≤, ≥, =)
+            const typeSymbol = c.type === '<=' ? '≤' : c.type === '>=' ? '≥' : '=';
             const mid = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
             if (mid[0] >= 0 && mid[0] <= ax && mid[1] >= 0 && mid[1] <= ax) {
                 ctx.fillStyle = GRAPH_COLORS[i % 6];
                 ctx.font = `${Math.max(9, Math.round(W / 60))}px Outfit,sans-serif`;
                 ctx.textAlign = 'left';
-                ctx.fillText(`C${i + 1}`, tx(mid[0]) + 3, ty(mid[1]) - 5);
+                ctx.fillText(`C${i + 1} (${typeSymbol})`, tx(mid[0]) + 3, ty(mid[1]) - 5);
             }
         });
 

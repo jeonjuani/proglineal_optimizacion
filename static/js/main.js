@@ -87,7 +87,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         html += `
-            <span class="eq-op eq-op--rel">&le;</span>
+            <select class="constraint-type-select">
+                <option value="<=">≤</option>
+                <option value=">=">≥</option>
+                <option value="=">=</option>
+            </select>
             <input type="number" step="any" class="var-input const-rhs" placeholder="0">
             <button type="button" class="btn-secondary remove-btn" aria-label="Eliminar restricción">&times;</button>
         `;
@@ -106,7 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const row of document.querySelectorAll('.constraint-row')) {
             const coefs = Array.from(row.querySelectorAll('.const-coef')).map(i => parseFloat(i.value) || 0);
             const rhs = parseFloat(row.querySelector('.const-rhs').value) || 0;
-            constraints.push({ coefficients: coefs, rhs });
+            const type = row.querySelector('.constraint-type-select').value;
+            constraints.push({ coefficients: coefs, rhs, type });
         }
 
         if (constraints.length === 0) {

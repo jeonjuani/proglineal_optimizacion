@@ -274,6 +274,44 @@ input:not(.var-input):focus, select:focus {
     margin: 0 0.15rem;
 }
 
+/* Constraint type selector (≤, ≥, =) */
+.constraint-type-select {
+    flex: 0 0 auto;
+    width: 3.8rem;
+    min-width: 3.8rem;
+    height: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0 0.4rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    text-align: center;
+    text-align-last: center;
+    color: var(--accent-color);
+    background: rgba(22, 163, 74, 0.06);
+    border: 1.5px solid rgba(22, 163, 74, 0.25);
+    border-radius: 10px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    /* Override the general select arrow for this compact selector */
+    background-image: none;
+    padding-right: 0.4rem;
+}
+
+.constraint-type-select:hover {
+    border-color: var(--accent-color);
+    background: rgba(22, 163, 74, 0.1);
+}
+
+.constraint-type-select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.15);
+}
+
 .var-input {
     width: 4.5rem;
     min-width: 4.5rem;

@@ -21,9 +21,15 @@ def solve():
         # Procesar restricciones
         A = []
         b = []
+        constraint_types = []
         for const in constraints:
             A.append(const['coefficients'])
             b.append(const['rhs'])
+            # Tipo de restricción: '<=', '>=', o '='
+            ct = const.get('type', '<=')
+            if ct not in ('<=', '>=', '='):
+                ct = '<='
+            constraint_types.append(ct)
 
         # Validaciones básicas
         if not c or not A or not b:
@@ -32,13 +38,11 @@ def solve():
         if len(A[0]) != len(c):
             return jsonify({"error": "El número de coeficientes en las restricciones no coincide con la función objetivo"}), 400
 
-        # Verificar que b no tenga negativos (simplex estándar requiere b >= 0)
-        for i, rhs in enumerate(b):
-            if rhs < 0:
-                return jsonify({"error": f"El término independiente de la restricción {i+1} debe ser ≥ 0"}), 400
+        # Nota: ya no rechazamos b < 0 porque el solver lo normaliza internamente
+        # (multiplica la restricción por -1 e invierte la desigualdad)
 
         # Resolver con el solver que genera los pasos del tableau
-        solver = SimplexSolver(c, A, b, optimization_type=obj_type)
+        solver = SimplexSolver(c, A, b, optimization_type=obj_type, constraint_types=constraint_types)
         results = solver.solve()
 
         return jsonify(results)
